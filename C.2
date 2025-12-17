@@ -1,0 +1,131 @@
+/*
+ * main.c
+ * Laboratory Activity 3 - C.2. Activity 2
+ * Objective: Receive data from PC, display on LEDs, and echo back ASCII info.
+ */
+
+#include "main.h"
+#include "stm32f4xx_hal.h"
+#include <string.h>
+#include <stdio.h>  // Required for sprintf
+
+/* UART handle */
+UART_HandleTypeDef huart1;
+
+/* Function Prototypes */
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_USART1_UART_Init(void);
+
+int main(void)
+{
+  /* 1. Initialize HAL and System Clock */
+  HAL_Init();
+  SystemClock_Config();
+
+  /* 2. Initialize Peripherals */
+  MX_GPIO_Init();        // Sets up LEDs on PD12-PD15
+  MX_USART1_UART_Init(); // Sets up UART at 9600 Baud
+
+  uint8_t receivedChar;
+  char buffer[100];      // Buffer to store messages sent back to PC
+
+  /* 3. Main Loop */
+  while (1)
+  {
+    // Wait to receive 1 byte from PC (Blocking mode - program waits here until you type something)
+    if(HAL_UART_Receive(&huart1, &receivedChar, 1, HAL_MAX_DELAY) == HAL_OK)
+    {
+      // --- LED Logic ---
+      // Get the lower 4 bits of the character (0x0F is 00001111)
+      uint8_t ledValue = receivedChar & 0x0F;
+
+      // Turn off all LEDs first (PD12, PD13, PD14, PD15)
+      GPIOD->ODR &= ~(GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15);
+      
+      // Turn on LEDs based on the bit value. 
+      // We shift left by 12 because the LEDs start at Pin 12.
+      GPIOD->ODR |= (ledValue << 12);
+
+      // --- Terminal Feedback Logic ---
+      
+      // 1. Send Decimal Value
+      sprintf(buffer, "Received: %c | ASCII Decimal: %d\r\n", receivedChar, receivedChar);
+      HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+
+      // 2. Send Binary Value
+      strcpy(buffer, "ASCII Binary: ");
+      HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+
+      // Loop to print bits from MSB (bit 7) to LSB (bit 0)
+      for(int i=7; i>=0; i--)
+      {
+        // Calculate bit value ('0' or '1')
+        buffer[0] = ((receivedChar >> i) & 1) + '0';
+        HAL_UART_Transmit(&huart1, (uint8_t*)buffer, 1, HAL_MAX_DELAY);
+      }
+      
+      // New lines for formatting
+      HAL_UART_Transmit(&huart1, (uint8_t*)"\r\n\r\n", 4, HAL_MAX_DELAY);
+    }
+  }
+}
+
+/* System Clock Configuration */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  HAL_RCC_OscConfig(&RCC_OscInitStruct);
+
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+  HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0);
+}
+
+/* USART1 Init - Configured for 9600 Baud */
+static void MX_USART1_UART_Init(void)
+{
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600;  // NOTE: Set Terminal to 9600
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  HAL_UART_Init(&huart1);
+}
+
+/* GPIO Init - Configured for LEDs on PD12-PD15 */
+static void MX_GPIO_Init(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+
+  /* Configure GPIO pins : PD12 PD13 PD14 PD15 (LEDs) */
+  GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /* Initialize LEDs to OFF */
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
+}
