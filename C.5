@@ -1,0 +1,211 @@
+/* USER CODE BEGIN Header */
+/**
+  * Activity C.5: Write/Read String to Internal Flash (Simulated EEPROM)
+  * Logic:
+  * - If SW=0 (Released): Ask user for input -> Save to Flash.
+  * - If SW=1 (Pressed): Read from Flash -> Send to PC.
+  */
+/* USER CODE END Header */
+
+#include "main.h"
+#include "stm32f4xx_hal.h"
+#include <string.h>
+#include <stdio.h>
+
+/* Handle for UART */
+UART_HandleTypeDef huart1;
+
+/* Definitions for Flash Storage */
+/* We use Sector 11 (Last sector of 1MB Flash) to be safe */
+#define FLASH_STORAGE_ADDR 0x080E0000
+#define FLASH_SECTOR_NUM   FLASH_SECTOR_11
+
+/* Function Prototypes */
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_USART1_UART_Init(void);
+void Error_Handler(void);
+void Flash_Write_String(char *data);
+void Flash_Read_String(void);
+void UART_Receive_String(char *buffer, uint16_t max_len);
+
+int main(void)
+{
+  HAL_Init();
+  SystemClock_Config();
+  MX_GPIO_Init();
+  MX_USART1_UART_Init();
+
+  /* Buffer to store user input */
+  char myBuffer[100];
+
+  /* Check Switch State (PA0) */
+  /* Note: PA0 is usually LOW (0) when released, HIGH (1) when pressed */
+  if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET)
+  {
+      /* --- MODE 0: WRITE TO MEMORY --- */
+
+      // 1. Ask the user for input
+      char *msg1 = "\r\n[WRITE MODE] Enter a string and press ENTER:\r\n";
+      HAL_UART_Transmit(&huart1, (uint8_t*)msg1, strlen(msg1), HAL_MAX_DELAY);
+
+      // 2. Receive the string from PC
+      UART_Receive_String(myBuffer, 50);
+
+      // 3. Write it to Flash (EEPROM simulation)
+      char *msg2 = "\r\nSaving to Flash Memory...\r\n";
+      HAL_UART_Transmit(&huart1, (uint8_t*)msg2, strlen(msg2), HAL_MAX_DELAY);
+
+      Flash_Write_String(myBuffer);
+
+      char *msg3 = "Save Complete! Please Reset board with Button Pressed to read.\r\n";
+      HAL_UART_Transmit(&huart1, (uint8_t*)msg3, strlen(msg3), HAL_MAX_DELAY);
+  }
+  else
+  {
+      /* --- MODE 1: READ FROM MEMORY --- */
+
+      char *msgRead = "\r\n[READ MODE] Reading from Flash Memory:\r\nData: ";
+      HAL_UART_Transmit(&huart1, (uint8_t*)msgRead, strlen(msgRead), HAL_MAX_DELAY);
+
+      // Read and print the data
+      Flash_Read_String();
+
+      HAL_UART_Transmit(&huart1, (uint8_t*)"\r\n", 2, HAL_MAX_DELAY);
+  }
+
+  /* Infinite loop (Do nothing after task is done) */
+  while (1)
+  {
+  }
+}
+
+/* --- HELPER FUNCTIONS --- */
+
+/* Function to receive characters one by one until Enter is pressed */
+void UART_Receive_String(char *buffer, uint16_t max_len)
+{
+    uint8_t ch;
+    uint16_t count = 0;
+
+    while (count < max_len - 1)
+    {
+        // Receive 1 char
+        if (HAL_UART_Receive(&huart1, &ch, 1, HAL_MAX_DELAY) == HAL_OK)
+        {
+            // Echo back the character so user sees what they type
+            HAL_UART_Transmit(&huart1, &ch, 1, 10);
+
+            // Check for Enter key (Carriage Return '\r')
+            if (ch == '\r')
+            {
+                break; // Stop receiving
+            }
+
+            buffer[count++] = ch;
+        }
+    }
+    buffer[count] = '\0'; // Null-terminate string
+}
+
+/* Function to Write String to Internal Flash */
+void Flash_Write_String(char *data)
+{
+    // 1. Unlock Flash
+    HAL_FLASH_Unlock();
+
+    // 2. Erase the Sector first (Required before writing)
+    FLASH_EraseInitTypeDef EraseInitStruct;
+    uint32_t SectorError;
+
+    EraseInitStruct.TypeErase = FLASH_TYPEERASE_SECTORS;
+    EraseInitStruct.VoltageRange = FLASH_VOLTAGE_RANGE_3;
+    EraseInitStruct.Sector = FLASH_SECTOR_NUM;
+    EraseInitStruct.NbSectors = 1;
+
+    HAL_FLASHEx_Erase(&EraseInitStruct, &SectorError);
+
+    // 3. Write data byte by byte
+    int i = 0;
+    while (data[i] != '\0')
+    {
+        HAL_FLASH_Program(FLASH_TYPEPROGRAM_BYTE, FLASH_STORAGE_ADDR + i, data[i]);
+        i++;
+    }
+    // Write Null terminator at the end
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_BYTE, FLASH_STORAGE_ADDR + i, 0);
+
+    // 4. Lock Flash
+    HAL_FLASH_Lock();
+}
+
+/* Function to Read String from Internal Flash */
+void Flash_Read_String(void)
+{
+    char *flash_ptr = (char *)FLASH_STORAGE_ADDR;
+
+    // Just transmit the string found at that address
+    // Check if empty (0xFF)
+    if ((uint8_t)*flash_ptr == 0xFF)
+    {
+        char *empty = "Memory is Empty!";
+        HAL_UART_Transmit(&huart1, (uint8_t*)empty, strlen(empty), HAL_MAX_DELAY);
+    }
+    else
+    {
+        HAL_UART_Transmit(&huart1, (uint8_t*)flash_ptr, strlen(flash_ptr), HAL_MAX_DELAY);
+    }
+}
+
+/* --- STANDARD INIT FUNCTIONS (Use logic from previous labs) --- */
+
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  HAL_RCC_OscConfig(&RCC_OscInitStruct);
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0);
+}
+
+static void MX_USART1_UART_Init(void)
+{
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600; // Match Terminal
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  HAL_UART_Init(&huart1);
+}
+
+static void MX_GPIO_Init(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+
+  /* Configure PA0 (Switch) */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+}
+
+void Error_Handler(void)
+{
+  __disable_irq();
+  while (1) { }
+}
