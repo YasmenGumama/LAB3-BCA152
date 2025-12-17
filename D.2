@@ -1,0 +1,64 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : SPI SLAVE Example
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+/* USER CODE BEGIN Includes */
+#include <string.h>
+/* USER CODE END Includes */
+
+/* Private variables ---------------------------------------------------------*/
+SPI_HandleTypeDef hspi1;
+UART_HandleTypeDef huart1; // Ensure this matches your board (huart1 or huart2)
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_SPI1_Init(void);
+static void MX_USART1_UART_Init(void);
+
+/* Application entry point */
+int main(void)
+{
+  /* MCU Configuration */
+  HAL_Init();
+  SystemClock_Config();
+  MX_GPIO_Init();
+  MX_SPI1_Init();        // Configured as SLAVE in .ioc
+  MX_USART1_UART_Init();
+
+  /* USER CODE BEGIN 2 */
+  char msg[] = "Slave Ready. Waiting for data...\r\n";
+  HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
+
+  uint8_t rx_data; // Variable to store received byte
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+      // 1. Wait indefinitely (MAX_DELAY) until the Master sends 1 byte
+      // The code effectively "pauses" on this line until data arrives.
+      if (HAL_SPI_Receive(&hspi1, &rx_data, 1, HAL_MAX_DELAY) == HAL_OK)
+      {
+          // 2. Data received! Send it to the PC via UART
+          HAL_UART_Transmit(&huart1, &rx_data, 1, 100);
+      }
+  }
+  /* USER CODE END WHILE */
+}
+
+/* ------------------------------------------------------------------------- */
+/* COPY THE GENERATED CONFIG FUNCTIONS BELOW FROM YOUR OWN PROJECT           */
+/* OR LET CUBEMX REGENERATE THEM TO ENSURE SPI IS IN SLAVE MODE              */
+/* ------------------------------------------------------------------------- */
+// Note: For the code to compile fully, you must have the init functions 
+// (SystemClock_Config, MX_SPI1_Init, etc.) generated at the bottom 
+// by STM32CubeIDE as discussed in the previous step.
