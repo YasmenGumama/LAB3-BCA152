@@ -1,0 +1,137 @@
+/*
+ * main.c
+ * Laboratory Activity 3 - C.1. Activity 1
+ * Objective: Send "GUMAMA" continuously via USART1 to PC
+ */
+
+#include "main.h"
+#include "stm32f4xx_hal.h"
+#include <string.h>
+
+/* Global Handle for UART1 */
+UART_HandleTypeDef huart1;
+
+/* Function Prototypes */
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_USART1_UART_Init(void);
+void Error_Handler(void);
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* 1. Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* 2. Configure the System Clock */
+  SystemClock_Config();
+
+  /* 3. Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_USART1_UART_Init();
+
+  /* Define the message to send (Your Last Name + New Line) */
+  const char *last_name = "GUMAMA\r\n";
+
+  /* 4. Infinite loop */
+  while (1)
+  {
+      /* Transmit the string via UART1 */
+      /* Arguments: UART Handle, Data buffer, Size of data, Timeout */
+      HAL_UART_Transmit(&huart1, (uint8_t*)last_name, strlen(last_name), HAL_MAX_DELAY);
+
+      /* Add a small delay (500ms) so the terminal isn't flooded too fast */
+      HAL_Delay(500);
+  }
+}
+
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+  /** Configure the main internal regulator output voltage
+  */
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+  /* Initialize the huart1 instance */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;           // IMPORTANT: Match this in Terminal v1.9b
+  huart1.Init.WordLength = UART_WORDLENGTH_8B; // 8 bits data [cite: 23]
+  huart1.Init.StopBits = UART_STOPBITS_1;      // 1 stop bit [cite: 23]
+  huart1.Init.Parity = UART_PARITY_NONE;       // No parity [cite: 23]
+  huart1.Init.Mode = UART_MODE_TX_RX;          // Transmit and Receive mode
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE; // No Handshaking 
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOA_CLK_ENABLE(); // Enable Clock for PA9 (TX) and PA10 (RX)
+}
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
+  /* User can add his own implementation to report the HAL error return state */
+  __disable_irq();
+  while (1)
+  {
+  }
+}
