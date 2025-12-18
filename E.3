@@ -1,0 +1,107 @@
+#include "stm32f4xx_hal.h"
+#include <string.h>
+#include <stdio.h>
+I2C_HandleTypeDef hi2c1;
+UART_HandleTypeDef huart1;
+#define RTC_ADDRESS 0x68 << 1 // DS1307/DS3231 7-bit address shifted for HAL
+// Function prototypes
+void SystemClock_Config(void);
+static void MX_I2C1_Init(void);
+static void MX_USART1_UART_Init(void);
+uint8_t bcd2bin(uint8_t val);
+uint8_t RTC_GetHour(void);
+uint8_t RTC_GetMinute(void);
+uint8_t RTC_GetSecond(void);
+int main(void)
+{
+HAL_Init();
+SystemClock_Config();
+MX_I2C1_Init();
+MX_USART1_UART_Init();
+char msg[50];
+uint8_t last_minute = 0xFF; // Store last sent minute
+while (1)
+{
+uint8_t hour = RTC_GetHour();
+uint8_t min = RTC_GetMinute();
+uint8_t sec = RTC_GetSecond();
+// Only send time when seconds = 0 and new minute
+if(sec == 0 && min != last_minute)
+{
+snprintf(msg, sizeof(msg), "Time: %02d:%02d:%02d\r\n", hour, min, sec);
+HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+last_minute = min;
+}
+HAL_Delay(200); // Small delay to reduce CPU load
+}
+}
+// Convert BCD to binary
+uint8_t bcd2bin(uint8_t val)
+{
+return ((val >> 4) * 10 + (val & 0x0F));
+}
+// Read hour from RTC
+uint8_t RTC_GetHour(void)
+{
+uint8_t hour;
+HAL_I2C_Mem_Read(&hi2c1, RTC_ADDRESS, 0x02, 1, &hour, 1, HAL_MAX_DELAY);
+return bcd2bin(hour & 0x3F); // Mask 24h mode bits
+}
+// Read minute from RTC
+uint8_t RTC_GetMinute(void)
+{
+uint8_t min;
+HAL_I2C_Mem_Read(&hi2c1, RTC_ADDRESS, 0x01, 1, &min, 1, HAL_MAX_DELAY);
+return bcd2bin(min);
+}
+// Read second from RTC
+uint8_t RTC_GetSecond(void)
+{
+uint8_t sec;
+HAL_I2C_Mem_Read(&hi2c1, RTC_ADDRESS, 0x00, 1, &sec, 1, HAL_MAX_DELAY);
+return bcd2bin(sec & 0x7F); // Mask CH bit
+}
+/* I2C and UART initialization */
+static void MX_I2C1_Init(void)
+{
+__HAL_RCC_I2C1_CLK_ENABLE();
+hi2c1.Instance = I2C1;
+hi2c1.Init.ClockSpeed = 100000;
+hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+hi2c1.Init.OwnAddress1 = 0;
+hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+hi2c1.Init.OwnAddress2 = 0;
+hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+HAL_I2C_Init(&hi2c1);
+}
+static void MX_USART1_UART_Init(void)
+{
+huart1.Instance = USART1;
+huart1.Init.BaudRate = 9600;
+huart1.Init.WordLength = UART_WORDLENGTH_8B;
+huart1.Init.StopBits = UART_STOPBITS_1;
+huart1.Init.Parity = UART_PARITY_NONE;
+huart1.Init.Mode = UART_MODE_TX_RX;
+huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+HAL_UART_Init(&huart1);
+}
+void SystemClock_Config(void)
+{
+RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+RCC_OscInitStruct.HSICalibrationValue = 16;
+RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+HAL_RCC_OscConfig(&RCC_OscInitStruct);
+RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+|RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0);
+}
